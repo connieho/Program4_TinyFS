@@ -24,9 +24,9 @@ int openDisk(char *filename, int nBytes){
    if (file > 0) {
       if (nBytes > 0) {
          for(index = 0; index < nBytes; index++) {
-            buffer[i] = 0;
+            buffer[index] = 0;
          }
-         write(file, buffer, nBytes) 
+         write(file, buffer, nBytes); 
       }
    } else {
       return ERROR_BADFILE;
@@ -67,6 +67,6 @@ void closeDisk(int disk) {
    if(lseek(disk, 0, SEEK_SET) < 0 || disk < 0) {
       return;
    }
-
+   fsync(disk);
    close(disk);
 }
