@@ -1,5 +1,6 @@
+char*  initSuperBlock(int nBytes);
 typedef struct superblock {
-   const int magic = 0x45; //detect when disk is not in correct format, second byte of every block
+   const int MAGIC 0x45; //detect when disk is not in correct format, second byte of every block
    int inode_root; //block number of the root inode
    struct free_block* free_head; //pointer to list of freeblock
 } superblock;
@@ -13,11 +14,12 @@ typedef struct inode {
    char* filename;
    int size;
    struct file_extent* data_head; //head of file_extent LL
-}
+};
 
 typedef struct file_extent {
    char[BLOCKSIZE] file_data; 
    struct file_extent* next; //pointer to next data block
+<<<<<<< HEAD
 } file_extent 
 
 /******************************* Required Functions for TinyFS *******************************/
@@ -66,3 +68,4 @@ int tfs_readByte(fileDescriptor FD, char *buffer);
 
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset);   
+ 
