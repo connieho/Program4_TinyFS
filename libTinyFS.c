@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include "libDisk.h"
 #include "libTinyFS.h"
@@ -13,11 +14,10 @@ int tfs_mkfs(char *filename, int nBytes){
       return file;
    }
 
-   char *superblock = initSuperBlock();
+   char *superblock = initSuperBlock(nBytes);
    writeBlock(file, 0, superblock); //writes the superblock to the file
    
    initFS(file, nBytes);
-
 
    return -1;
 }
@@ -51,16 +51,18 @@ void initFS(int file, int nBytes) {
 
 
 /*Initializes the Superblock for the file system*/
-char* initSuperBlock() {
+char* initSuperBlock(int nBytes) {
    char* superblock;
-
+   int num_blocks = nBytes/BLOCKSIZE;
 
    superblock = (char *)calloc(1, BLOCKSIZE); 
    *superblock = SUPERBLOCK; //Byte 0 is block type, using superblock macro
    *(superblock + 1) = 0x45; //Byte 1 is magic byte for status check
-   *(superblock + 2) = 1; //byte 2 holds the next free block, initially block 1
-   //NOTE: Byte 2 is a pointer to another block, Byte 3 is an empty bytes as per spec
-   
+   *(superblock + 2) = 1; //Byte 2: next free block, can change
+   //NOTE: Byte 3 is an empty bytes as per spec
+   *(superblock + 4) = num_blocks; //Byte 4: total number of blocks
+   *(superblock + 5) = num_blocks - 1; //Byte 5: total number of free blocks
+   *(superblock + 6) = 0; //Byte 6: total number of files
    return superblock;
 }
 
@@ -68,16 +70,34 @@ char* initSuperBlock() {
 /* tfs_mount(char *filename) “mounts” a TinyFS file system located within ‘filename’. tfs_unmount(void) “unmounts” the currently mounted file system. As part of the mount operation, tfs_mount should verify the file system is the correct type. Only one file system may be mounted at a time. Use tfs_unmount to cleanly unmount the currently mounted file system. Must return a specified success/error code. */
 int tfs_mount(char *filename){
    //open the disk
-   int disk_num;
+   char sb_buffer[BLOCKSIZE];
+   char inode_buffer[BLOCKSIZE];
 
    disk_num = openDisk(filename, 0); 
    if (disk_num < 0) {
       //return a mounting error
    }
 
-   //CHANGE THE 1 IN CALLOC TO THE NUMBER OF FILES WE HAVE ON DISK
-   file_table = (file_entry *)calloc(sizeof(file_entry), 1);
-   //read in inodes and create resource table of existing files
+   readBlock(disk_num, 0, sb_buffer);
+   total_files =  sb_buffer[6];
+   free_blocks = sb_buffer[5];
+   file_table = (file_entry *)calloc(sizeof(file_entry), total_files);
+   //start reading in inodes at byte offset 8
+   for (int idx = 0; idx < total_files; idx++) {
+      readBlock(disk_num, sb_buffer[idx + 8], inode_buffer);
+      file_table[idx].fd = -1;
+      file_table[idx].open = 0;
+      file_table[idx].inode_block = sb_buffer[idx + 8];
+      file_table[idx].file_block = inode_buffer[2]; //store the first file block number in byte 2
+      memcpy(file_table[idx].name,"test", strlen("test")); //EDIT AFTER WE decide how we will store this in inode
+      file_table[idx].file_offset = 0;
+   }
+
+   //create the necessary table for free_block inforation
+   for (int idx = 0; idx < free_blocks; idx++) {
+
+   }
+
 
    return -1;
 }
@@ -88,17 +108,56 @@ int tfs_unmount() {
  
 /* Opens a file for reading and writing on the currently mounted file system. Creates a dynamic resource table entry for the file, and returns a file descriptor (integer) that can be used to reference this file while the filesystem is mounted. */
 fileDescriptor tfs_openFile(char *name){
-   //create an inode for the file, if not existing
-   //create a file extent for the file, if not existing
-   //link the inode to the file, if not existing
-   //add file as a dynamic resource table entry
-   return -1;
+   int existing;
+   existing = 0;
+   for (int idx = 0; idx < total_files; idx++) {
+      if (strcmp(file_table[idx].name, name) == 0) {
+         existing = 1;
+         if (file_table[idx].open == 0) {
+            file_table[idx].open = 1;
+            file_table[idx].fd = nextFD++;
+         }
+         return file_table[idx].fd;
+      }
+   }
+
+   if (existing == 0) {
+      free_block* inode = freeblock_head;
+      free_block* file_extent = freeblock_head->next;
+      freeblock_head = freeblock_head->next->next;
+      
+      file_table = realloc(file_table, sizeof(file_entry) * total_files);
+      file_table[total_files - 1].open = 1;
+      file_table[total_files - 1].fd = nextFD++;
+      file_table[total_files - 1].inode_block = inode->block_number;
+      file_table[total_files - 1].file_block = file_extent->block_number;
+      memcpy(file_table[total_files - 1].name, name, strlen(name) + 1);
+      
+      return file_table[total_files - 1].fd;
+   }
+
+   //check to see if file is existing
+   //if not existing, use freeblock to create inode, filextent for file
+   //add inode block # to superblock
+   //add file as a dynamic resource table entry that holds inode? and fd
+   return ERROR_BADFILEOPEN;
 }
  
 /* Closes the file, de-allocates all system/disk resources, and removes table entry */
 int tfs_closeFile(fileDescriptor FD) {
    //remove dynamic resource table entry
-   return -1;
+   for (int idx = 0; idx < total_files; idx++) {
+      if (file_table[idx].fd == FD) {
+         if (file_table[idx].open == 1) {
+            file_table[idx].open = 0;
+            return 0;
+         }
+         else {
+            return ERROR_BADFILECLOSE;
+         }
+      }
+   }
+   return ERROR_BADFILECLOSE;
 }
  
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
