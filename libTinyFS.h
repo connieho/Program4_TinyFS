@@ -30,7 +30,6 @@ typedef struct inode {
 typedef struct file_extent {
    //char[BLOCKSIZE] file_data; 
    struct file_extent* next; //pointer to next data block
-<<<<<<< HEAD
 } file_extent 
 
 /******************************* Required Functions for TinyFS *******************************/

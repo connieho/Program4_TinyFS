@@ -1,3 +1,4 @@
 #define ERROR_BADFILE -1
 #define ERROR_BADREAD -2
 #define ERROR_BADWRITE -3
+#define ERROR_BADOPEN -4
