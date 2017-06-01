@@ -9,4 +9,10 @@
 /* use this name for a default disk file name */
 #define DEFAULT_DISK_NAME “tinyFSDisk”    
 typedef int fileDescriptor;
+
+#define SUPERBLOCK 1 
+#define INODE 2
+#define FILE_EXTENT 3
+#define FREEBLOCK 4
+
 #endif
