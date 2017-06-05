@@ -27,10 +27,6 @@ typedef struct file_entry {
 
 
 /******************************* Required Functions for TinyFS *******************************/
-<<<<<<< HEAD
-=======
-
->>>>>>> fa330a51c67907462b787ea33e3d7f916873b50f
 int tfs_mkfs(char *filename, int nBytes);
 
 int tfs_mount(char *filename);
