@@ -108,8 +108,8 @@ int tfs_unmount() {
  
 /* Opens a file for reading and writing on the currently mounted file system. Creates a dynamic resource table entry for the file, and returns a file descriptor (integer) that can be used to reference this file while the filesystem is mounted. */
 fileDescriptor tfs_openFile(char *name){
-   int existing;
-   existing = 0;
+   int existing = 0;
+
    for (int idx = 0; idx < total_files; idx++) {
       if (strcmp(file_table[idx].name, name) == 0) {
          existing = 1;
@@ -162,6 +162,57 @@ int tfs_closeFile(fileDescriptor FD) {
  
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
+   char *freeBuffer = (char *) calloc(1, BLOCKSIZE);
+   int current_block_num, tempSize, numBlock, file_ext_num, inode, idx = 0;
+   int next_block_num;
+   free_block *newFile;
+
+   // Find the corresponding fd that exist in file_table
+   // return ERROR_BADFILE if FD is not found
+   while(file_table[idx].fd != FD) {
+      idx++;
+      if (idx > total_files) {
+         return ERROR_BADFILE;        
+      }
+   }
+   
+   // Find the inode block corresponding to the inode number
+   readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
+   cuurent_block_num = freeBuffer[2];
+   // Find the file extent corresponding to the one in inode_block
+   readBlock(disk_num, freeBuffer[2], freeBuffer);
+
+   //Empty File extent, write into the block
+   if(!freeBuffer[2]) {
+      freeBuffer[0] = FILE_EXTENT;
+      freeBuffer[1] = 0x45;
+      if (size <= 252) {
+         memcpy(freeBuffer + 4, buffer, size);
+         freeBuffer[2] = 0;
+         writeBlock(disk_num, current_block_num, freeBuffer);
+      } else {
+         numBlock = ceil((double) size / 252.0) - 1;
+         
+
+         // grab the second free block
+         for (idx = 0; idx < numBlock; idx++) {
+            memcpy(freeBuffer + 4, buffer, size);
+            tempSize = size - 252;
+            free_block *temp = freeblock_head;
+            freeblock_head = freeblock_head->next;
+            freeBuffer[2] = temp->block_number;
+            writeBlock(disk_num, current_block_num, freeBuffer);
+         }
+         memcpy(freeBuffer + 4, buffer, tempSize);
+         freeBuffer[2] = 0;
+         writeBlock(disk_num, current_block_num, freeBuffer);
+      }
+   } else {
+        
+   }
+   
+   
+   
    return -1;
 }
  
