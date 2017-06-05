@@ -143,9 +143,14 @@ int tfs_unmount() {
  
 /* Opens a file for reading and writing on the currently mounted file system. Creates a dynamic resource table entry for the file, and returns a file descriptor (integer) that can be used to reference this file while the filesystem is mounted. */
 fileDescriptor tfs_openFile(char *name){
+<<<<<<< HEAD
    int existing;
    char* buffer;
    existing = 0;
+=======
+   int existing = 0;
+
+>>>>>>> fa330a51c67907462b787ea33e3d7f916873b50f
    for (int idx = 0; idx < total_files; idx++) {
       if (strcmp(file_table[idx].name, name) == 0) {
          existing = 1;
