@@ -7,24 +7,24 @@
 
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
-   int file;
-   file = openDisk(filename, nBytes);
+   disk_num = openDisk(filename, nBytes);
    //check to see if opendisk was a success, error code for failure
-   if (file < 0) {
-      return file;
+   if (disk_num < 0) {
+      return disk_num;
    }
 
    char *superblock = initSuperBlock(nBytes);
-   writeBlock(file, 0, superblock); //writes the superblock to the file
+   writeBlock(disk_num, 0, superblock); //writes the superblock to the file
+   free(superblock);
    
-   initFS(file, nBytes);
+   initFS(nBytes);
 
    return -1;
 }
 
 
 /*Initializes all blocks in FS except for Superblock*/
-void initFS(int file, int nBytes) {
+void initFS(int nBytes) {
    int num_blocks;
    char* newblock;
 
@@ -43,7 +43,7 @@ void initFS(int file, int nBytes) {
       }
 
       //byte 3 remains empty
-      writeBlock(file, idx, newblock);
+      writeBlock(disk_num, idx, newblock);
    }
 
    free(newblock);
@@ -63,6 +63,7 @@ char* initSuperBlock(int nBytes) {
    *(superblock + 4) = num_blocks; //Byte 4: total number of blocks
    *(superblock + 5) = num_blocks - 1; //Byte 5: total number of free blocks
    *(superblock + 6) = 0; //Byte 6: total number of files
+
    return superblock;
 }
 
@@ -72,43 +73,78 @@ int tfs_mount(char *filename){
    //open the disk
    char sb_buffer[BLOCKSIZE];
    char inode_buffer[BLOCKSIZE];
+   char free_buffer[BLOCKSIZE];
 
    disk_num = openDisk(filename, 0); 
    if (disk_num < 0) {
       //return a mounting error
    }
 
+   //read in the superblock to sb_buffer
    readBlock(disk_num, 0, sb_buffer);
    total_files =  sb_buffer[6];
    free_blocks = sb_buffer[5];
    file_table = (file_entry *)calloc(sizeof(file_entry), total_files);
    //start reading in inodes at byte offset 8
+   //each byte holds block number for inode
    for (int idx = 0; idx < total_files; idx++) {
       readBlock(disk_num, sb_buffer[idx + 8], inode_buffer);
       file_table[idx].fd = -1;
       file_table[idx].open = 0;
       file_table[idx].inode_block = sb_buffer[idx + 8];
       file_table[idx].file_block = inode_buffer[2]; //store the first file block number in byte 2
-      memcpy(file_table[idx].name,"test", strlen("test")); //EDIT AFTER WE decide how we will store this in inode
+      memcpy(file_table[idx].name, inode_buffer + 4, 9); //EDIT AFTER WE decide how we will store this in inode
       file_table[idx].file_offset = 0;
    }
 
-   //create the necessary table for free_block inforation
-   for (int idx = 0; idx < free_blocks; idx++) {
-
+   //create the freeblock linked list
+   free_block* current;
+   free_block* last;
+   if (free_blocks > 0) {
+      current = (free_block*)calloc(sizeof(free_block), 1);
+      current->block_number = sb_buffer[2];
+      current->next = NULL;
+      freeblock_head = current;
+      last = current;
    }
 
+   for (int idx = 1; idx < free_blocks; idx++) {
+      readBlock(disk_num, last->block_number, free_buffer);
+      current = (free_block*)calloc(sizeof(free_block), 1);
+      current->block_number = free_buffer[2];
+      current->next = NULL;
+      last->next = current;
+      last = current;
+   }
 
    return -1;
 }
 
 int tfs_unmount() {
+   char sb_buffer[BLOCKSIZE];
+   free(file_table);
+   readBlock(disk_num, 0, sb_buffer);
+   sb_buffer[5] = free_blocks;
+   sb_buffer[6] = total_files;
+   sb_buffer[2] = freeblock_head->block_number;
+   writeBlock(disk_num, 0, sb_buffer);
+
+   free_block* temp;
+   free_block* curr;
+   curr = freeblock_head;
+   while (curr != NULL) {
+      temp = curr;
+      curr = curr->next;
+      free(temp);
+   }
+
    return -1;
 }
  
 /* Opens a file for reading and writing on the currently mounted file system. Creates a dynamic resource table entry for the file, and returns a file descriptor (integer) that can be used to reference this file while the filesystem is mounted. */
 fileDescriptor tfs_openFile(char *name){
    int existing;
+   char* buffer;
    existing = 0;
    for (int idx = 0; idx < total_files; idx++) {
       if (strcmp(file_table[idx].name, name) == 0) {
@@ -122,10 +158,13 @@ fileDescriptor tfs_openFile(char *name){
    }
 
    if (existing == 0) {
+      ++total_files;
+      
       free_block* inode = freeblock_head;
       free_block* file_extent = freeblock_head->next;
       freeblock_head = freeblock_head->next->next;
-      
+      free_blocks -= 2;
+
       file_table = realloc(file_table, sizeof(file_entry) * total_files);
       file_table[total_files - 1].open = 1;
       file_table[total_files - 1].fd = nextFD++;
@@ -133,6 +172,21 @@ fileDescriptor tfs_openFile(char *name){
       file_table[total_files - 1].file_block = file_extent->block_number;
       memcpy(file_table[total_files - 1].name, name, strlen(name) + 1);
       
+      buffer = (char *)calloc(BLOCKSIZE, 1);
+      buffer[0] = INODE;
+      buffer[1] = 0x45;
+      buffer[2] = file_extent->block_number;
+      buffer[3] = 0x00;
+      memcpy(buffer + 4, name, strlen(name) + 1);
+      
+      writeBlock(disk_num, inode->block_number, buffer);
+      
+      readBlock(disk_num, 0, buffer);
+      buffer[total_files + 7] = inode->block_number;
+      buffer[5] = free_blocks; 
+      writeBlock(disk_num, 0, buffer);
+      
+      free(buffer);
       return file_table[total_files - 1].fd;
    }
 
@@ -162,11 +216,74 @@ int tfs_closeFile(fileDescriptor FD) {
  
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
+   char *freeBuffer = (char *) calloc(1, BLOCKSIZE);
+   int current_block_num, tempSize, numBlock, file_ext_num, inode, idx = 0;
+   int next_block_num;
+   free_block *newFile;
+
+   // Find the corresponding fd that exist in file_table
+   // return ERROR_BADFILE if FD is not found
+   while(file_table[idx].fd != FD) {
+      idx++;
+      if (idx > total_files) {
+         return ERROR_BADFILE;        
+      }
+   }
+   
+   // Find the inode block corresponding to the inode number
+   readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
+   cuurent_block_num = freeBuffer[2];
+   // Find the file extent corresponding to the one in inode_block
+   readBlock(disk_num, freeBuffer[2], freeBuffer);
+
+   //Empty File extent, write into the block
+   if(!freeBuffer[2]) {
+      freeBuffer[0] = FILE_EXTENT;
+      freeBuffer[1] = 0x45;
+      if (size <= 252) {
+         memcpy(freeBuffer + 4, buffer, size);
+         freeBuffer[2] = 0;
+         writeBlock(disk_num, current_block_num, freeBuffer);
+      } else {
+         numBlock = ceil((double) size / 252.0) - 1;
+         
+
+         // grab the second free block
+         for (idx = 0; idx < numBlock; idx++) {
+            memcpy(freeBuffer + 4, buffer, size);
+            tempSize = size - 252;
+            free_block *temp = freeblock_head;
+            freeblock_head = freeblock_head->next;
+            freeBuffer[2] = temp->block_number;
+            writeBlock(disk_num, current_block_num, freeBuffer);
+         }
+         memcpy(freeBuffer + 4, buffer, tempSize);
+         freeBuffer[2] = 0;
+         writeBlock(disk_num, current_block_num, freeBuffer);
+      }
+   } else {
+        
+   }
+   
+   
+   
    return -1;
-}
- 
+} 
 /* deletes a file and marks its blocks as free on disk. */
 int tfs_deleteFile(fileDescriptor FD){
+   int idx;
+   while (idx < total_files && file_table[idx].fd != FD) {
+      ++idx;
+   }
+   if (idx >= total_files) {
+      return ERROR_BADFILE;
+   }
+   
+   //change inode to freeblock
+   //change all file_extents to freeblocks
+   //add all new freeblocks to freeblock linked list
+   //remove file from table
+   //remove inode from superblock, move all other inodes in superblock up
    return -1;
 }
  
@@ -177,5 +294,6 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset) {
+   //inode byte 3 will be file pointer
    return -1;
 }
