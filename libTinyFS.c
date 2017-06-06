@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 #include <stdlib.h>
 #include "libDisk.h"
@@ -232,7 +233,7 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    
    // Find the inode block corresponding to the inode number
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
-   cuurent_block_num = freeBuffer[2];
+   current_block_num = freeBuffer[2];
    // Find the file extent corresponding to the one in inode_block
    readBlock(disk_num, freeBuffer[2], freeBuffer);
 
@@ -271,7 +272,14 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
 } 
 /* deletes a file and marks its blocks as free on disk. */
 int tfs_deleteFile(fileDescriptor FD){
-   int idx;
+   int idx, last_head, current_block;
+   char readBuffer[BLOCKSIZE];
+   char *freeBuffer;
+   free_block* freeEntry;
+   freeBuffer = (char *)calloc(1, BLOCKSIZE);
+   freeBuffer[0] = FREEBLOCK;
+   freeBuffer[1] = 0x45;
+   
    while (idx < total_files && file_table[idx].fd != FD) {
       ++idx;
    }
@@ -279,16 +287,65 @@ int tfs_deleteFile(fileDescriptor FD){
       return ERROR_BADFILE;
    }
    
-   //change inode to freeblock
-   //change all file_extents to freeblocks
-   //add all new freeblocks to freeblock linked list
+   readBlock(disk_num, file_table[idx].inode_block, readBuffer);
+   
+   while (readBuffer[2] != 0) {
+      current_block = readBuffer[2];
+      freeEntry = (free_block *)calloc(1, sizeof(file_entry));
+      freeEntry->next = freeblock_head;
+      last_head = freeblock_head->block_number;
+      freeEntry->block_number = current_block;
+      freeblock_head = freeEntry;
+      freeBuffer[2] = last_head;
+      readBlock(disk_num, current_block, readBuffer);
+      writeBlock(disk_num, current_block, freeBuffer);
+      ++free_blocks;
+   }
+   
+   current_block = file_table[idx].inode_block;
+   freeEntry = (free_block *)calloc(1, sizeof(file_entry));
+   freeEntry->next = freeblock_head;
+   last_head = freeblock_head->block_number;
+   freeEntry->block_number = current_block;
+   freeblock_head = freeEntry;
+   freeBuffer[2] = last_head;
+   writeBlock(disk_num, current_block, freeBuffer);
+   ++free_blocks;
+
+   readBlock(disk_num, 0, readBuffer);
+   for (int sbIdx = 8; sbIdx < total_files + 8; sbIdx++) {
+      if (readBuffer[sbIdx] == current_block) {
+         readBuffer[sbIdx] = readBuffer[total_files + 7];
+         readBuffer[total_files + 7] = 0x00;
+      }
+   }
+   
+   --total_files;
+   readBuffer[6] = total_files;
+   readBuffer[5] = free_blocks;
+   readBuffer[2] = current_block;
+   writeBlock(disk_num, 0, readBuffer);
+   free(freeBuffer);
+   
    //remove file from table
-   //remove inode from superblock, move all other inodes in superblock up
    return -1;
 }
  
 /* reads one byte from the file and copies it to buffer, using the current file pointer location and incrementing it by one upon success. If the file pointer is already at the end of the file then tfs_readByte() should return an error and not increment the file pointer. */
 int tfs_readByte(fileDescriptor FD, char *buffer) {
+   int idx;
+   char readBuffer[BLOCKSIZE];
+   idx = 0;
+   while (idx < total_files && file_table[idx].fd != FD) {
+      ++idx;
+   }
+   readBlock(disk_num, file_table[idx].inode_block, readBuffer);
+   if (file_table[idx].file_offset != BLOCKSIZE) {
+      *buffer = readBuffer[file_table[idx].file_offset++];
+   }
+   else {
+      return END_OF_FILE;
+   }
    return -1;
 }
  

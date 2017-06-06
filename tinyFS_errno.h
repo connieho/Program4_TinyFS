@@ -4,3 +4,4 @@
 #define ERROR_BADOPEN -4
 #define ERROR_BADFILEOPEN -5
 #define ERROR_BADFILECLOSE -6
+#define END_OF_FILE -7
