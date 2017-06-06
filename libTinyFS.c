@@ -8,14 +8,12 @@
 #include "tinyFS.h"
 
 //TODO
-//ERROR CHECKING, R/W ONLY ERRORS  
-
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
    disk_num = openDisk(filename, nBytes);
    //check to see if opendisk was a success, error code for failure
    if (disk_num < 0) {
-      return disk_num;
+      return ERROR_OPENDISK;
    }
 
    char *superblock = initSuperBlock(nBytes);
@@ -418,6 +416,8 @@ int tfs_writeByte(fileDescriptor FD, unsigned char data) {
 }
 
 int tfs_rename(char *newName, char *oldName) {
+   int idx = 0;
+   char buffer[BLOCKSIZE];
 
    if (strlen(newName) > 8)
       return ERROR_RENAME_FAILURE;
@@ -428,8 +428,34 @@ int tfs_rename(char *newName, char *oldName) {
    if (disk_num < 0)
       return ERROR_BADREAD; 
 
-   //modifyFile(file_table[idx].inode_block);
+   modifyFile(file_table[idx].inode_block);
    return -1;
+   while (strcmp(file_table[idx].name, oldName) != 0) {
+      idx++;
+      if(idx > total_files)
+         return ERROR_BADFILE;
+   }
+
+   strcpy(file_table[idx].name, newName);
+   readBlock(disk_num, file_table[idx].inode_block, buffer);
+   
+   memcpy(buffer + 5, newName, strlen(newName) + 1);
+   writeBlock(disk_num, file_table[idx].inode_block, buffer);
+     
+   return RENAME_SUCCESS;
+}
+
+int tfs_readdir() {
+   int idx = 0;
+
+   printf("********** List of Files and Directories **********\n");
+   while (idx < total_files) {
+      printf("%s\n", file_table[idx].name);
+   }
+   
+   printf("**********            Done               **********\n");
+   return READDIR_SUCCESS;
+>>>>>>> 7c6768b23a5a64e48f4ee2f89f1b03ab82230220
 }
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/

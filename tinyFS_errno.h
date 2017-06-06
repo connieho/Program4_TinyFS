@@ -10,4 +10,10 @@
 #define SEEK_SUCCESS 1
 #define ERROR_BADCLOSE -9
 #define ERROR_RENAME_FAILURE -10
+<<<<<<< HEAD
 #define NO_WRITE_ACCESS -11
+=======
+#define ERROR_OPENDISK -11
+#define RENAME_SUCCESS 2
+#define READDIR_SUCCESS 3
+>>>>>>> 7c6768b23a5a64e48f4ee2f89f1b03ab82230220
