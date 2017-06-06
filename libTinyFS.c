@@ -234,6 +234,7 @@ int tfs_closeFile(fileDescriptor FD) {
 //where do we start writing if file already exists?
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
+   // Error checking: RW access, disk open, have enough freeBlock
    char *freeBuffer;
    int current_block_num, tempSize, numBlock, file_ext_num, inode, idx = 0;
    int i, next_block_num;
@@ -290,6 +291,7 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
       freeBuffer[2] = 0;
       writeBlock(disk_num, current_block_num, freeBuffer);
    }
+   file_table[idx].file_offset = 0;
    
    return WRITE_SUCCESS;
 } 
@@ -384,6 +386,18 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
 int tfs_writeByte(fileDescriptor FD, unsigned int data) {
    return -1; 
 }
+
+int tfs_rename(char *newName, char *oldName) {
+
+   if (strlen(newName) > 8)
+      return ERROR_RENAME_FAILURE;
+
+   if (strcmp("/", oldName) == 0)
+      return ERROR_RENAME_FAILURE;
+
+   
+   return -1;
+}
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset) {
@@ -426,7 +440,7 @@ int tfs_makeRO(char *name) {
       }
    }
    if (existing == 0) {
-      //return bad file
+      return ERROR_BADFILE;
    }
    return 0;
 }
@@ -445,7 +459,7 @@ int tfs_makeRW(char *name) {
       }
    }
    if (existing == 0) {
-      //return bad file
+      return ERROR_BADFILE;
    }
    return 0;
 
