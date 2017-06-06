@@ -5,3 +5,7 @@
 #define ERROR_BADFILEOPEN -5
 #define ERROR_BADFILECLOSE -6
 #define END_OF_FILE -7
+#define ERROR_SEEK_FAILURE -8
+#define WRITE_SUCCESS 0
+#define SEEK_SUCCESS 1
+

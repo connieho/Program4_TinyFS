@@ -219,8 +219,10 @@ int tfs_closeFile(fileDescriptor FD) {
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    char *freeBuffer = (char *) calloc(1, BLOCKSIZE);
    int current_block_num, tempSize, numBlock, file_ext_num, inode, idx = 0;
-   int next_block_num;
+   int i, next_block_num;
    free_block *newFile;
+
+   numBlock = ceil((double) size / 252.0) - 1;
 
    // Find the corresponding fd that exist in file_table
    // return ERROR_BADFILE if FD is not found
@@ -238,37 +240,33 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    readBlock(disk_num, freeBuffer[2], freeBuffer);
 
    //Empty File extent, write into the block
-   if(!freeBuffer[2]) {
-      freeBuffer[0] = FILE_EXTENT;
-      freeBuffer[1] = 0x45;
-      if (size <= 252) {
-         memcpy(freeBuffer + 4, buffer, size);
-         freeBuffer[2] = 0;
-         writeBlock(disk_num, current_block_num, freeBuffer);
-      } else {
-         numBlock = ceil((double) size / 252.0) - 1;
-         
+   i = numBlock;
+   while (freeBuffer[2] != 0) {
+      readBlock(disk_num, i++, freeBuffer);
+   }
 
-         // grab the second free block
-         for (idx = 0; idx < numBlock; idx++) {
-            memcpy(freeBuffer + 4, buffer, size);
-            tempSize = size - 252;
-            free_block *temp = freeblock_head;
-            freeblock_head = freeblock_head->next;
-            freeBuffer[2] = temp->block_number;
-            writeBlock(disk_num, current_block_num, freeBuffer);
-         }
-         memcpy(freeBuffer + 4, buffer, tempSize);
-         freeBuffer[2] = 0;
+   freeBuffer[0] = FILE_EXTENT;
+   freeBuffer[1] = 0x45;
+   if (size <= 252) {
+      memcpy(freeBuffer + 4, buffer, size);
+      freeBuffer[2] = 0;
+      writeBlock(disk_num, current_block_num, freeBuffer);
+   } else {
+      // grab the second free block
+      for (idx = 0; idx < numBlock; idx++) {
+         memcpy(freeBuffer + 4, buffer, size);
+         tempSize = size - 252;
+         free_block *temp = freeblock_head;
+         freeblock_head = freeblock_head->next;
+         freeBuffer[2] = temp->block_number;
          writeBlock(disk_num, current_block_num, freeBuffer);
       }
-   } else {
-        
+      memcpy(freeBuffer + 4, buffer, tempSize);
+      freeBuffer[2] = 0;
+      writeBlock(disk_num, current_block_num, freeBuffer);
    }
    
-   
-   
-   return -1;
+   return WRITE_SUCCESS;
 } 
 /* deletes a file and marks its blocks as free on disk. */
 int tfs_deleteFile(fileDescriptor FD){
@@ -351,6 +349,23 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset) {
+   int currentBlock, idx = 0; 
+   char *freeBuffer = (char *)calloc(1, BLOCKSIZE);
+
    //inode byte 3 will be file pointer
-   return -1;
+   while(file_table[idx].fd != FD) {
+      idx++;
+      if (idx > total_files) {
+         return ERROR_BADFILE;        
+      }
+   }
+   
+   // Find the inode block corresponding to the inode number
+   readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
+   currentBlock = freeBuffer[2];
+
+   freeBuffer[3] += offset;
+   writeBlock(disk_num, currentBlock, freeBuffer); 
+
+   return SEEK_SUCCESS;
 }
