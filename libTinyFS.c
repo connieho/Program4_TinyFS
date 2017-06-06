@@ -8,7 +8,7 @@
 #include "tinyFS.h"
 
 //TODO
-//ERROR CHECKING, MOD/ACCESS TIMES, R/W ONLY ERRORS, WRITEBYTE, WRITEFILE, DIRECTORY LISTING
+//ERROR CHECKING, MOD/ACCESS TIMES, R/W ONLY ERRORS, WRITEBYTE, WRITEFILE, DIRECTORY LISTING, tfs_rename
 
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
@@ -395,7 +395,8 @@ int tfs_rename(char *newName, char *oldName) {
    if (strcmp("/", oldName) == 0)
       return ERROR_RENAME_FAILURE;
 
-   
+   if (readBlock(disk_num) < 0)
+      return ERROR_BADREAD; 
    return -1;
 }
  

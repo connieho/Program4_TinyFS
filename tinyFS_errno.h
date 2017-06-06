@@ -9,3 +9,4 @@
 #define WRITE_SUCCESS 0
 #define SEEK_SUCCESS 1
 #define ERROR_BADCLOSE -9
+#define ERROR_RENAME_FAILURE -10
