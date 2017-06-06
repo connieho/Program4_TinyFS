@@ -8,4 +8,4 @@
 #define ERROR_SEEK_FAILURE -8
 #define WRITE_SUCCESS 0
 #define SEEK_SUCCESS 1
-
+#define ERROR_BADCLOSE -9

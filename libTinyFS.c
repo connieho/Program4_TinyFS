@@ -215,6 +215,8 @@ int tfs_closeFile(fileDescriptor FD) {
    return ERROR_BADFILECLOSE;
 }
  
+
+//where do we start writing if file already exists?
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    char *freeBuffer = (char *) calloc(1, BLOCKSIZE);
@@ -331,26 +333,31 @@ int tfs_deleteFile(fileDescriptor FD){
  
 /* reads one byte from the file and copies it to buffer, using the current file pointer location and incrementing it by one upon success. If the file pointer is already at the end of the file then tfs_readByte() should return an error and not increment the file pointer. */
 int tfs_readByte(fileDescriptor FD, char *buffer) {
-   int idx;
+   int idx, filesize, success, blockNum;
    char readBuffer[BLOCKSIZE];
    idx = 0;
    while (idx < total_files && file_table[idx].fd != FD) {
       ++idx;
    }
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
-   if (file_table[idx].file_offset != BLOCKSIZE) {
+   filesize = readBuffer[3] * 252;
+   if (file_table[idx].file_offset <= filesize) {
+      blockNum = ceil((double) file_table[idx].file_offset / 252.0);
+      while(blockNum-- > 0) {
+         readBlock(disk_num, readBuffer[2], readBuffer);
+      }
       *buffer = readBuffer[file_table[idx].file_offset++];
+      success = 0;
    }
    else {
-      return END_OF_FILE;
+      success =  END_OF_FILE;
    }
-   return -1;
+   return success;
 }
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset) {
-   int currentBlock, idx = 0; 
-   char *freeBuffer = (char *)calloc(1, BLOCKSIZE);
+   int file_size, code, currentBlock, idx = 0; 
 
    //inode byte 3 will be file pointer
    while(file_table[idx].fd != FD) {
@@ -359,13 +366,18 @@ int tfs_seek(fileDescriptor FD, int offset) {
          return ERROR_BADFILE;        
       }
    }
+   char *freeBuffer = (char *)calloc(1, BLOCKSIZE);
    
-   // Find the inode block corresponding to the inode number
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
-   currentBlock = freeBuffer[2];
-
-   freeBuffer[3] += offset;
-   writeBlock(disk_num, currentBlock, freeBuffer); 
+   if (offset < freeBuffer[3] * 252) {
+      code = 0;
+      file_table[idx].file_offset = offset;
+   } 
+   else {
+      offset = 0;
+      code = ERROR_BADFILE;
+   }
+   free(freeBuffer);
 
    return SEEK_SUCCESS;
 }
