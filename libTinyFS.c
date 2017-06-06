@@ -1,10 +1,14 @@
 #include <stdio.h>
+#include <time.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
 #include "libDisk.h"
 #include "libTinyFS.h"
 #include "tinyFS.h"
+
+//TODO
+//ERROR CHECKING, MOD/ACCESS TIMES, R/W ONLY ERRORS, WRITEBYTE, WRITEFILE, DIRECTORY LISTING
 
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
@@ -139,6 +143,7 @@ int tfs_unmount() {
       free(temp);
    }
 
+   closeDisk(disk_num);
    return -1;
 }
  
@@ -146,6 +151,7 @@ int tfs_unmount() {
 fileDescriptor tfs_openFile(char *name){
    char* buffer;
    int existing = 0;
+   timestamp* filetime;
 
    for (int idx = 0; idx < total_files; idx++) {
       if (strcmp(file_table[idx].name, name) == 0) {
@@ -174,12 +180,20 @@ fileDescriptor tfs_openFile(char *name){
       memcpy(file_table[total_files - 1].name, name, strlen(name) + 1);
       
       buffer = (char *)calloc(BLOCKSIZE, 1);
+      filetime = (timestamp *)calloc(1, sizeof(timestamp));
       buffer[0] = INODE;
       buffer[1] = 0x45;
       buffer[2] = file_extent->block_number;
       buffer[3] = 0x00;
       memcpy(buffer + 4, name, strlen(name) + 1);
       
+      buffer[13] = 0x03;
+
+
+      filetime->creation = time(NULL);
+      filetime->modification = filetime->creation;
+      filetime->access = filetime->creation;
+      memcpy(buffer + 14, filetime, sizeof(timestamp));
       writeBlock(disk_num, inode->block_number, buffer);
       
       readBlock(disk_num, 0, buffer);
@@ -188,6 +202,7 @@ fileDescriptor tfs_openFile(char *name){
       writeBlock(disk_num, 0, buffer);
       
       free(buffer);
+      free(filetime);
       return file_table[total_files - 1].fd;
    }
 
@@ -219,7 +234,7 @@ int tfs_closeFile(fileDescriptor FD) {
 //where do we start writing if file already exists?
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
-   char *freeBuffer = (char *) calloc(1, BLOCKSIZE);
+   char *freeBuffer;
    int current_block_num, tempSize, numBlock, file_ext_num, inode, idx = 0;
    int i, next_block_num;
    free_block *newFile;
@@ -235,9 +250,17 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
       }
    }
    
+   freeBuffer = (char *) calloc(1, BLOCKSIZE);
+   timestamp* filetime = (timestamp *)calloc(1, sizeof(timestamp));
    // Find the inode block corresponding to the inode number
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
    current_block_num = freeBuffer[2];
+   //modification time
+   memcpy(filetime, buffer + 14, sizeof(timestamp));
+   filetime->modification = time(NULL);
+   filetime->access = filetime->modification;
+   memcpy(buffer + 14, filetime, sizeof(timestamp));
+   writeBlock(disk_num, file_table[idx].inode_block, freeBuffer);
    // Find the file extent corresponding to the one in inode_block
    readBlock(disk_num, freeBuffer[2], freeBuffer);
 
@@ -319,7 +342,7 @@ int tfs_deleteFile(fileDescriptor FD){
          readBuffer[total_files + 7] = 0x00;
       }
    }
-   
+
    --total_files;
    readBuffer[6] = total_files;
    readBuffer[5] = free_blocks;
@@ -327,6 +350,9 @@ int tfs_deleteFile(fileDescriptor FD){
    writeBlock(disk_num, 0, readBuffer);
    free(freeBuffer);
    
+   memcpy(file_table + idx, file_table + total_files, sizeof(file_entry));
+   file_table = realloc(file_table, sizeof(file_entry) * total_files);
+
    //remove file from table
    return -1;
 }
@@ -354,6 +380,10 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
    }
    return success;
 }
+
+int tfs_writeByte(fileDescriptor FD, unsigned int data) {
+   return -1; 
+}
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset) {
@@ -380,4 +410,87 @@ int tfs_seek(fileDescriptor FD, int offset) {
    free(freeBuffer);
 
    return SEEK_SUCCESS;
+}
+
+int tfs_makeRO(char *name) {
+   int existing;
+   existing = 0;
+   char* buffer;
+   buffer = (char *) calloc(1, BLOCKSIZE);
+   for (int idx = 0; idx < total_files; idx++) {
+      if (strcmp(file_table[idx].name, name) == 0) {
+         existing = 1;
+         readBlock(disk_num, file_table[idx].inode_block, buffer);
+         buffer[13] = 0x01;
+         writeBlock(disk_num, file_table[idx].inode_block, buffer);
+      }
+   }
+   if (existing == 0) {
+      //return bad file
+   }
+   return 0;
+}
+
+int tfs_makeRW(char *name) {
+   int existing;
+   existing = 0;
+   char* buffer;
+   buffer = (char *) calloc(1, BLOCKSIZE);
+   for (int idx = 0; idx < total_files; idx++) {
+      if (strcmp(file_table[idx].name, name) == 0) {
+         existing = 1;
+         readBlock(disk_num, file_table[idx].inode_block, buffer);
+         buffer[13] = 0x03;
+         writeBlock(disk_num, file_table[idx].inode_block, buffer);
+      }
+   }
+   if (existing == 0) {
+      //return bad file
+   }
+   return 0;
+
+}
+
+timestamp* tfs_readFileInfo(fileDescriptor FD) {
+   int idx = 0; 
+
+   while(file_table[idx].fd != FD) {
+      idx++;
+      if (idx > total_files) {
+         return NULL;        
+      }
+   }
+   char *buffer = (char *)calloc(1, BLOCKSIZE);
+   timestamp* time = (timestamp *) calloc(1, sizeof(timestamp));
+   readBlock(disk_num, file_table[idx].inode_block, buffer);
+   memcpy(time, buffer + 14, sizeof(timestamp));
+   free(buffer);
+   return time;
+}
+
+void accessFile(int inode) {
+   char* buffer;
+   timestamp* filetime;
+   buffer = (char *)calloc(BLOCKSIZE, 1);
+   filetime = (timestamp *)calloc(sizeof(timestamp), 1);
+   memcpy(filetime, buffer + 14, sizeof(timestamp));
+   filetime->access = time(NULL);
+   memcpy(buffer + 14, filetime, sizeof(timestamp));
+   writeBlock(disk_num, inode, buffer);
+   free(buffer);
+   free(filetime);
+}
+
+void modifyFile(int inode) {
+   char* buffer;
+   timestamp* filetime;
+   buffer = (char *)calloc(BLOCKSIZE, 1);
+   filetime = (timestamp *)calloc(sizeof(timestamp), 1);
+   memcpy(filetime, buffer + 14, sizeof(timestamp));
+   filetime->modification = time(NULL);
+   filetime->access = filetime->modification;
+   memcpy(buffer + 14, filetime, sizeof(timestamp));
+   writeBlock(disk_num, inode, buffer);
+   free(buffer);
+   free(filetime);
 }

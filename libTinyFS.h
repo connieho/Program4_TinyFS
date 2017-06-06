@@ -24,6 +24,11 @@ typedef struct file_entry {
    char name[9];
 } file_entry;
 
+typedef struct timestamp {
+   time_t creation;
+   time_t modification;
+   time_t access;
+} timestamp;
 
 
 /******************************* Required Functions for TinyFS *******************************/
