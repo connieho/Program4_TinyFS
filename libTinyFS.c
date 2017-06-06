@@ -8,7 +8,7 @@
 #include "tinyFS.h"
 
 //TODO
-//ERROR CHECKING, MOD/ACCESS TIMES, R/W ONLY ERRORS, WRITEBYTE, WRITEFILE, DIRECTORY LISTING, tfs_rename
+//ERROR CHECKING, R/W ONLY ERRORS  
 
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
@@ -220,6 +220,7 @@ int tfs_closeFile(fileDescriptor FD) {
       if (file_table[idx].fd == FD) {
          if (file_table[idx].open == 1) {
             file_table[idx].open = 0;
+            accessFile(file_table[idx].inode_block);
             return 0;
          }
          else {
@@ -231,7 +232,6 @@ int tfs_closeFile(fileDescriptor FD) {
 }
  
 
-//where do we start writing if file already exists?
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    // Error checking: RW access, disk open, have enough freeBlock
@@ -252,15 +252,18 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    }
    
    freeBuffer = (char *) calloc(1, BLOCKSIZE);
-   timestamp* filetime = (timestamp *)calloc(1, sizeof(timestamp));
    // Find the inode block corresponding to the inode number
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
+
+   if (freeBuffer[RW] != 0x03) {
+      free(freeBuffer);
+      return NO_WRITE_ACCESS;
+   }
+
    current_block_num = freeBuffer[2];
    //modification time
-   memcpy(filetime, buffer + 15, sizeof(timestamp));
-   filetime->modification = time(NULL);
-   filetime->access = filetime->modification;
-   memcpy(buffer + 15, filetime, sizeof(timestamp));
+   modifyFile(file_table[idx].inode_block);
+
    writeBlock(disk_num, file_table[idx].inode_block, freeBuffer);
    // Find the file extent corresponding to the one in inode_block
    readBlock(disk_num, freeBuffer[2], freeBuffer);
@@ -313,6 +316,9 @@ int tfs_deleteFile(fileDescriptor FD){
    }
    
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
+   if (readBuffer[RW] != 0x03) {
+      return NO_WRITE_ACCESS;
+   }
    
    while (readBuffer[2] != 0) {
       current_block = readBuffer[2];
@@ -370,11 +376,12 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
    filesize = readBuffer[3] * 252;
    if (file_table[idx].file_offset <= filesize) {
-      blockNum = ceil((double) file_table[idx].file_offset / 252.0);
-      while(blockNum-- > 0) {
+      blockNum = floor((double) file_table[idx].file_offset / 252.0);
+      while(blockNum-- >= 0) {
          readBlock(disk_num, readBuffer[2], readBuffer);
       }
-      *buffer = readBuffer[file_table[idx].file_offset++];
+      *buffer = readBuffer[4 + file_table[idx].file_offset++];
+      accessFile(file_table[idx].inode_block);
       success = 0;
    }
    else {
@@ -383,8 +390,31 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
    return success;
 }
 
-int tfs_writeByte(fileDescriptor FD, unsigned int data) {
-   return -1; 
+int tfs_writeByte(fileDescriptor FD, unsigned char data) {
+   int idx, filesize, success, blockNum;
+   char readBuffer[BLOCKSIZE];
+   idx = 0;
+   while (idx < total_files && file_table[idx].fd != FD) {
+      ++idx;
+   }
+   readBlock(disk_num, file_table[idx].inode_block, readBuffer);
+   if (readBuffer[RW] != 0x03) {
+      return NO_WRITE_ACCESS;
+   }
+   filesize = readBuffer[3] * 252;
+   if (file_table[idx].file_offset <= filesize) {
+      blockNum = floor((double) file_table[idx].file_offset / 252.0);
+      while(blockNum-- >= 0) {
+         readBlock(disk_num, readBuffer[2], readBuffer);
+      }
+      readBuffer[4 + file_table[idx].file_offset++] = data;
+      modifyFile(file_table[idx].inode_block);
+      success = 0;
+   }
+   else {
+      success =  END_OF_FILE;
+   }
+   return success;
 }
 
 int tfs_rename(char *newName, char *oldName) {
@@ -395,8 +425,10 @@ int tfs_rename(char *newName, char *oldName) {
    if (strcmp("/", oldName) == 0)
       return ERROR_RENAME_FAILURE;
 
-   if (readBlock(disk_num) < 0)
+   if (disk_num < 0)
       return ERROR_BADREAD; 
+
+   //modifyFile(file_table[idx].inode_block);
    return -1;
 }
  
