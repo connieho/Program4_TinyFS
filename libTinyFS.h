@@ -1,5 +1,6 @@
 //inode 0-type, 1-magic, 2-file extent, 3,4- size, 5-name, 14-RW, 15-timestamp
 //r-0x01, w-0x03
+#define RW 14
 char*  initSuperBlock();
 void initFS(int nBytes);
 
@@ -51,3 +52,7 @@ int tfs_deleteFile(fileDescriptor FD);
 int tfs_readByte(fileDescriptor FD, char *buffer);
 
 int tfs_seek(fileDescriptor FD, int offset);   
+
+void accessFile(int inode);
+
+void modifyFile(int inode);
