@@ -1,3 +1,5 @@
+//inode 0-type, 1-magic, 2-file extent, 3,4- size, 5-name, 14-RW, 15-timestamp
+//r-0x01, w-0x03
 char*  initSuperBlock();
 void initFS(int nBytes);
 

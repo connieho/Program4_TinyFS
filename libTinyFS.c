@@ -98,7 +98,7 @@ int tfs_mount(char *filename){
       file_table[idx].open = 0;
       file_table[idx].inode_block = sb_buffer[idx + 8];
       file_table[idx].file_block = inode_buffer[2]; //store the first file block number in byte 2
-      memcpy(file_table[idx].name, inode_buffer + 4, 9); //EDIT AFTER WE decide how we will store this in inode
+      memcpy(file_table[idx].name, inode_buffer + 5, 9); //EDIT AFTER WE decide how we will store this in inode
       file_table[idx].file_offset = 0;
    }
 
@@ -185,15 +185,15 @@ fileDescriptor tfs_openFile(char *name){
       buffer[1] = 0x45;
       buffer[2] = file_extent->block_number;
       buffer[3] = 0x00;
-      memcpy(buffer + 4, name, strlen(name) + 1);
+      memcpy(buffer + 5, name, strlen(name) + 1);
       
-      buffer[13] = 0x03;
+      buffer[14] = 0x03;
 
 
       filetime->creation = time(NULL);
       filetime->modification = filetime->creation;
       filetime->access = filetime->creation;
-      memcpy(buffer + 14, filetime, sizeof(timestamp));
+      memcpy(buffer + 15, filetime, sizeof(timestamp));
       writeBlock(disk_num, inode->block_number, buffer);
       
       readBlock(disk_num, 0, buffer);
@@ -256,10 +256,10 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
    current_block_num = freeBuffer[2];
    //modification time
-   memcpy(filetime, buffer + 14, sizeof(timestamp));
+   memcpy(filetime, buffer + 15, sizeof(timestamp));
    filetime->modification = time(NULL);
    filetime->access = filetime->modification;
-   memcpy(buffer + 14, filetime, sizeof(timestamp));
+   memcpy(buffer + 15, filetime, sizeof(timestamp));
    writeBlock(disk_num, file_table[idx].inode_block, freeBuffer);
    // Find the file extent corresponding to the one in inode_block
    readBlock(disk_num, freeBuffer[2], freeBuffer);
@@ -421,7 +421,7 @@ int tfs_makeRO(char *name) {
       if (strcmp(file_table[idx].name, name) == 0) {
          existing = 1;
          readBlock(disk_num, file_table[idx].inode_block, buffer);
-         buffer[13] = 0x01;
+         buffer[14] = 0x01;
          writeBlock(disk_num, file_table[idx].inode_block, buffer);
       }
    }
@@ -440,7 +440,7 @@ int tfs_makeRW(char *name) {
       if (strcmp(file_table[idx].name, name) == 0) {
          existing = 1;
          readBlock(disk_num, file_table[idx].inode_block, buffer);
-         buffer[13] = 0x03;
+         buffer[14] = 0x03;
          writeBlock(disk_num, file_table[idx].inode_block, buffer);
       }
    }
@@ -463,7 +463,7 @@ timestamp* tfs_readFileInfo(fileDescriptor FD) {
    char *buffer = (char *)calloc(1, BLOCKSIZE);
    timestamp* time = (timestamp *) calloc(1, sizeof(timestamp));
    readBlock(disk_num, file_table[idx].inode_block, buffer);
-   memcpy(time, buffer + 14, sizeof(timestamp));
+   memcpy(time, buffer + 15, sizeof(timestamp));
    free(buffer);
    return time;
 }
@@ -473,9 +473,9 @@ void accessFile(int inode) {
    timestamp* filetime;
    buffer = (char *)calloc(BLOCKSIZE, 1);
    filetime = (timestamp *)calloc(sizeof(timestamp), 1);
-   memcpy(filetime, buffer + 14, sizeof(timestamp));
+   memcpy(filetime, buffer + 15, sizeof(timestamp));
    filetime->access = time(NULL);
-   memcpy(buffer + 14, filetime, sizeof(timestamp));
+   memcpy(buffer + 15, filetime, sizeof(timestamp));
    writeBlock(disk_num, inode, buffer);
    free(buffer);
    free(filetime);
@@ -486,10 +486,10 @@ void modifyFile(int inode) {
    timestamp* filetime;
    buffer = (char *)calloc(BLOCKSIZE, 1);
    filetime = (timestamp *)calloc(sizeof(timestamp), 1);
-   memcpy(filetime, buffer + 14, sizeof(timestamp));
+   memcpy(filetime, buffer + 15, sizeof(timestamp));
    filetime->modification = time(NULL);
    filetime->access = filetime->modification;
-   memcpy(buffer + 14, filetime, sizeof(timestamp));
+   memcpy(buffer + 15, filetime, sizeof(timestamp));
    writeBlock(disk_num, inode, buffer);
    free(buffer);
    free(filetime);
