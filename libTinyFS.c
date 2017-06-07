@@ -6,6 +6,7 @@
 #include "libDisk.h"
 #include "libTinyFS.h"
 #include "tinyFS.h"
+#include "tinyFS_errno.h"
 
 //TODO
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
@@ -455,7 +456,6 @@ int tfs_readdir() {
    
    printf("**********            Done               **********\n");
    return READDIR_SUCCESS;
->>>>>>> 7c6768b23a5a64e48f4ee2f89f1b03ab82230220
 }
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/

@@ -52,7 +52,6 @@ int readBlock(int disk, int bNum, void *block){
    if(read(disk, block, BLOCKSIZE) == -1)
       return ERROR_BADREAD;
    
-
    return 0;
 }
  

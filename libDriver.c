@@ -8,8 +8,9 @@
 #include <fcntl.h>
 #include "tinyFS.h"
 #include "tinyFS_errno.h"
-#include "libDisk.c"
-#include "libTinyFS.c"
+#include "libDisk.h"
+#include "libTinyFS.h"
+
 int main() {
    int file;
    tfs_mkfs("test.txt", 5096);
@@ -23,4 +24,6 @@ int main() {
    tfs_readByte(file, &h);
    tfs_deleteFile(tester);
    tfs_unmount();
+
+   return 0;
 }

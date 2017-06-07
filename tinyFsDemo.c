@@ -8,7 +8,9 @@
 #include <fcntl.h>
 #include "tinyFS.h"
 #include "tinyFS_errno.h"
-#include "libTinyFS.h"
+#include "libTinyFS.c"
+#include "libDisk.c"
+
 int main() {
    int file;
    tfs_mkfs("test.txt", 5096);

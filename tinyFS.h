@@ -9,5 +9,4 @@
 #define FILE_EXTENT 3
 #define FREEBLOCK 4
 
-typedef int fileDescriptor;
 #endif
