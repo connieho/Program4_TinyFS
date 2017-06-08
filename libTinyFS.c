@@ -24,7 +24,7 @@ int tfs_mkfs(char *filename, int nBytes){
    free(superblock);
    
    initFS(nBytes);
-
+   disk_num = -1;
    return 0;
 }
 
@@ -84,7 +84,7 @@ int tfs_mount(char *filename){
 
    disk_num = openDisk(filename, 0); 
    if (disk_num < 0) {
-      //return a mounting error
+      return BAD_MOUNT;
    }
 
    //read in the superblock to sb_buffer
@@ -146,9 +146,10 @@ int tfs_unmount() {
    }
    free_blocks = 0;
    total_files = 0;
-   disk_num = -1;
 
    closeDisk(disk_num);
+   disk_num = -1;
+   mounted = 0;
    return 0;
 }
  
@@ -378,6 +379,9 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
    idx = 0;
    while (idx < total_files && file_table[idx].fd != FD) {
       ++idx;
+   }
+   if (idx >= total_files || file_table[idx].open == 0) {
+      return ERROR_BADFILE;
    }
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
    filesize = readBuffer[3] * 252;

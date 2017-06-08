@@ -94,7 +94,46 @@ int main() {
    tfs_readdir();
    printf("\n");
 
-   printf("Unmounting filesystem test.txt");
+   printf("Closing file test1\n");
+   tfs_closeFile(test1);
+   printf("\n");
+
+   printf("Trying to read from test1, closed file\n");
+   printf("Demo asserts that return result is an error, if not then prints the byte\n");
+   int result = tfs_readByte(test1, &temp);
+   if (result == ERROR_BADFILE) {
+      printf("File not available\n");
+   }
+   else {
+      printf("%c\n", temp);
+   }
+   printf("\n");
+
+
+   printf("Unmounting filesystem test.txt\n");
    tfs_unmount();
    printf("\n");
+
+   printf("Mounting and Unmounting file second.txt\n");
+   tfs_mkfs("second.txt", 1024);
+   tfs_mount("second.txt");
+   tfs_unmount();
+   printf("\n");
+
+   printf("Mounting filesystem test.txt\n");
+   tfs_mount("test.txt");
+   printf("\n");
+   
+   printf("Opening file test1");
+   test1 = tfs_openFile("test1");
+   printf("\n");
+
+   printf("Read string byte by byte back from the file test1\n");
+   for (int idx = 0; idx < strlen(mystring) + 1; idx++) {
+      tfs_readByte(test1, &temp);
+      printf("%c", temp);
+   }
+   printf("\n");
+
+   printf("Rename");
 }

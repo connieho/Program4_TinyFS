@@ -80,7 +80,6 @@ int writeBlock(int disk, int bNum, void *block) {
  
 /* closeDisk() takes a disk number ‘disk’ and makes the disk closed to further I/O; i.e. any subsequent reads or writes to a closed disk should return an error. Closing a disk should also close the underlying file, committing any buffered writes. */
 void closeDisk(int disk) {
-   
    if(lseek(disk, 0, SEEK_SET) < 0 || disk < 0) {
       exit(ERROR_BADCLOSE);
    }
@@ -90,5 +89,6 @@ void closeDisk(int disk) {
       printf("Closing error\n");
       exit(ERROR_BADCLOSE);
    }
+   return;
 
 }

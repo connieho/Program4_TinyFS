@@ -14,6 +14,7 @@ int nextFD; //used to assign the nextFD
 int total_files; //total number of files stored in the file system
 int free_blocks;
 int disk_num;
+int mounted;
 
 typedef struct free_block {
    int block_number;
