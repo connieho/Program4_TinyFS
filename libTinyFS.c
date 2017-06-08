@@ -8,7 +8,9 @@
 #include "tinyFS.h"
 #include "tinyFS_errno.h"
 
-//TODO
+//TODO WRITEFILE SIZE ERRORS - MKFS IF DISK ALREADY MOUNTED, MOUNT IF DISK ALREADY MOUNTED, UNMOUNT IF NO DISK
+//CURRENTLY MOUNTED, WRITE IF NOT ENOUGH FREE BLOCKS TO WRITE, OPENFILE IF NOT ENOUGH FREEBLOCKS,
+//all functions if disk is not mounted
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
    disk_num = openDisk(filename, nBytes);
@@ -23,7 +25,7 @@ int tfs_mkfs(char *filename, int nBytes){
    
    initFS(nBytes);
 
-   return -1;
+   return 0;
 }
 
 
@@ -78,6 +80,7 @@ int tfs_mount(char *filename){
    char sb_buffer[BLOCKSIZE];
    char inode_buffer[BLOCKSIZE];
    char free_buffer[BLOCKSIZE];
+   nextFD = 0;
 
    disk_num = openDisk(filename, 0); 
    if (disk_num < 0) {
@@ -93,7 +96,7 @@ int tfs_mount(char *filename){
    //each byte holds block number for inode
    for (int idx = 0; idx < total_files; idx++) {
       readBlock(disk_num, sb_buffer[idx + 8], inode_buffer);
-      file_table[idx].fd = -1;
+      file_table[idx].fd = 0;
       file_table[idx].open = 0;
       file_table[idx].inode_block = sb_buffer[idx + 8];
       file_table[idx].file_block = inode_buffer[2]; //store the first file block number in byte 2
@@ -121,7 +124,7 @@ int tfs_mount(char *filename){
       last = current;
    }
 
-   return -1;
+   return 0;
 }
 
 int tfs_unmount() {
@@ -141,9 +144,12 @@ int tfs_unmount() {
       curr = curr->next;
       free(temp);
    }
+   free_blocks = 0;
+   total_files = 0;
+   disk_num = -1;
 
    closeDisk(disk_num);
-   return -1;
+   return 0;
 }
  
 /* Opens a file for reading and writing on the currently mounted file system. Creates a dynamic resource table entry for the file, and returns a file descriptor (integer) that can be used to reference this file while the filesystem is mounted. */
@@ -262,7 +268,8 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    current_block_num = freeBuffer[2];
    //modification time
    modifyFile(file_table[idx].inode_block);
-
+   
+   freeBuffer[3] = numBlock + 1;
    writeBlock(disk_num, file_table[idx].inode_block, freeBuffer);
    // Find the file extent corresponding to the one in inode_block
    readBlock(disk_num, freeBuffer[2], freeBuffer);
@@ -306,7 +313,7 @@ int tfs_deleteFile(fileDescriptor FD){
    freeBuffer = (char *)calloc(1, BLOCKSIZE);
    freeBuffer[0] = FREEBLOCK;
    freeBuffer[1] = 0x45;
-   
+   idx = 0; 
    while (idx < total_files && file_table[idx].fd != FD) {
       ++idx;
    }
@@ -356,12 +363,12 @@ int tfs_deleteFile(fileDescriptor FD){
    readBuffer[2] = current_block;
    writeBlock(disk_num, 0, readBuffer);
    free(freeBuffer);
-   
+  
    memcpy(file_table + idx, file_table + total_files, sizeof(file_entry));
    file_table = realloc(file_table, sizeof(file_entry) * total_files);
 
    //remove file from table
-   return -1;
+   return 0;
 }
  
 /* reads one byte from the file and copies it to buffer, using the current file pointer location and incrementing it by one upon success. If the file pointer is already at the end of the file then tfs_readByte() should return an error and not increment the file pointer. */
@@ -390,7 +397,7 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
 }
 
 int tfs_writeByte(fileDescriptor FD, unsigned char data) {
-   int idx, filesize, success, blockNum;
+   int idx, filesize, success, blockNum, current_block;
    char readBuffer[BLOCKSIZE];
    idx = 0;
    while (idx < total_files && file_table[idx].fd != FD) {
@@ -404,10 +411,12 @@ int tfs_writeByte(fileDescriptor FD, unsigned char data) {
    if (file_table[idx].file_offset <= filesize) {
       blockNum = floor((double) file_table[idx].file_offset / 252.0);
       while(blockNum-- >= 0) {
+         current_block = readBuffer[2];
          readBlock(disk_num, readBuffer[2], readBuffer);
       }
       readBuffer[4 + file_table[idx].file_offset++] = data;
       modifyFile(file_table[idx].inode_block);
+      writeBlock(disk_num, current_block, readBuffer);
       success = 0;
    }
    else {
@@ -430,7 +439,6 @@ int tfs_rename(char *newName, char *oldName) {
       return ERROR_BADREAD; 
 
    modifyFile(file_table[idx].inode_block);
-   return -1;
    while (strcmp(file_table[idx].name, oldName) != 0) {
       idx++;
       if(idx > total_files)
@@ -451,7 +459,7 @@ int tfs_readdir() {
 
    printf("********** List of Files and Directories **********\n");
    while (idx < total_files) {
-      printf("%s\n", file_table[idx].name);
+      printf("%s\n", file_table[idx++].name);
    }
    
    printf("**********            Done               **********\n");
@@ -545,6 +553,7 @@ void accessFile(int inode) {
    char* buffer;
    timestamp* filetime;
    buffer = (char *)calloc(BLOCKSIZE, 1);
+   readBlock(disk_num, inode, buffer);
    filetime = (timestamp *)calloc(sizeof(timestamp), 1);
    memcpy(filetime, buffer + 15, sizeof(timestamp));
    filetime->access = time(NULL);
@@ -558,6 +567,7 @@ void modifyFile(int inode) {
    char* buffer;
    timestamp* filetime;
    buffer = (char *)calloc(BLOCKSIZE, 1);
+   readBlock(disk_num, inode, buffer);
    filetime = (timestamp *)calloc(sizeof(timestamp), 1);
    memcpy(filetime, buffer + 15, sizeof(timestamp));
    filetime->modification = time(NULL);

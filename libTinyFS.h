@@ -10,9 +10,9 @@ void initFS(int nBytes);
 struct file_entry; 
 struct file_entry* file_table; //files that are open in the mounted filesystem
 struct free_block* freeblock_head;
-int nextFD = 0; //used to assign the nextFD
-int total_files = 0; //total number of files stored in the file system
-int free_blocks = 0;
+int nextFD; //used to assign the nextFD
+int total_files; //total number of files stored in the file system
+int free_blocks;
 int disk_num;
 
 typedef struct free_block {
