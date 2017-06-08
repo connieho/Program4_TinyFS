@@ -29,6 +29,9 @@ int main() {
    
    printf("Opening file: test1\n");
    fileDescriptor test1 = tfs_openFile("test1");
+   
+   time_t currtime = time(0);
+   while(time(0) < currtime + 2);
 
    printf("Opening file: test2\n");
    fileDescriptor test2 = tfs_openFile("test2");
@@ -62,6 +65,7 @@ int main() {
    tfs_seek(test1, 26);
    tfs_writeByte(test1, 'U');
    tfs_writeByte(test1, 'N');
+   while(time(0) < currtime + 4);
    tfs_seek(test1, 0);
    for (int idx = 0; idx < strlen(mystring) + 1; idx++) {
       tfs_readByte(test1, &temp);
@@ -87,14 +91,22 @@ int main() {
    tfs_readdir();
    printf("\n");
 
+   printf("Rename test1 to Chaunce\n");
+   tfs_readdir();
+   tfs_rename("Chaunce", "test1");
+   tfs_readdir();
+   printf("\n");
+
    printf("deleting file test2\n");
+   //printf("Freeblocks before: %d\n", free_blocks);
    tfs_deleteFile(test2);
+   //printf("Freeblocks after: %d\n", free_blocks);
    printf("\n");
 
    tfs_readdir();
    printf("\n");
 
-   printf("Closing file test1\n");
+   printf("Closing file Chaunce\n");
    tfs_closeFile(test1);
    printf("\n");
 
@@ -124,8 +136,8 @@ int main() {
    tfs_mount("test.txt");
    printf("\n");
    
-   printf("Opening file test1");
-   test1 = tfs_openFile("test1");
+   printf("Opening file Chaunce");
+   test1 = tfs_openFile("Chaunce");
    printf("\n");
 
    printf("Read string byte by byte back from the file test1\n");
@@ -135,5 +147,24 @@ int main() {
    }
    printf("\n");
 
-   printf("Rename");
+   printf("Open and make test3 Read-Only\n");
+   test3 = tfs_openFile("test3");
+   tfs_makeRO("test3");
+   result = tfs_writeFile(test3, "TEST123", strlen("TEST123") + 1);
+   if (result == NO_WRITE_ACCESS) {
+      printf("No Write Access\n");
+   }
+   printf("\n");
+
+   printf("Make test3 Read Write\n");
+   tfs_makeRW("test3");
+   printf("Writing TEST123 to test3\n");
+   result = tfs_writeFile(test3, "TEST123", strlen("TEST123") + 1);
+   printf("Reading first byte from test3\n");
+   tfs_readByte(test3, &temp);
+   printf("%c", temp);
+   printf("\n");
+   
+   printf("Unmounting test.txt\n");
+   tfs_unmount();
 }

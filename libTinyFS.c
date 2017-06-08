@@ -100,7 +100,7 @@ int tfs_mount(char *filename){
       file_table[idx].open = 0;
       file_table[idx].inode_block = sb_buffer[idx + 8];
       file_table[idx].file_block = inode_buffer[2]; //store the first file block number in byte 2
-      memcpy(file_table[idx].name, inode_buffer + 5, 9); //EDIT AFTER WE decide how we will store this in inode
+      memcpy(file_table[idx].name, inode_buffer + 5, 9); 
       file_table[idx].file_offset = 0;
    }
 
@@ -460,7 +460,6 @@ int tfs_rename(char *newName, char *oldName) {
 
 int tfs_readdir() {
    int idx = 0;
-
    printf("********** List of Files and Directories **********\n");
    while (idx < total_files) {
       printf("%s\n", file_table[idx++].name);
