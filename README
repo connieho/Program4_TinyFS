@@ -1,0 +1,38 @@
+Program 4 Tiny File System
+
+1. Names of all partners:
+   Ryan Heller, Connie Ho
+
+2. An explanation of how well your TinyFS implementation works:
+   Our TinyFS works fairly well with the test drive we have written. We are confident
+   that the program shall not seg fault in any cases. It will return different 
+   error code when a problem is encoutnered or occured as specify in "tinyFS_errno.h"
+   Each specific negative number correspond to a differnent error, hence making
+   debugging a little easier. Our TinyFsDemo demonstrates all the required and 
+   additional functionalities of the file system we wrote based on the write up
+   given to us. 
+
+3. An explanation of which additional functionality areas you have 
+   chosen and how you have shown that it works:
+
+   The additional fuunctionality areas we have chosen are:
+      1.) Directory Listing and renaming (tfs_rename(), tfs_readdir())
+      2.) Read-only and Write Byte Support (tfs_makeRO(char *name), 
+          tfs_makeRW(char *name), tfs_writeByte(fileDescriptor FD,
+          unsigned char data))
+      3.) Timestamps (tfs_readFileInfo(fileDescriptor FD)). 
+
+   In TinyFSDemo, there is a test for tfs_rename() and tfs_readdir(). We
+   print out the list of files and directories from original files, then
+   change of the filename to something else, print the list using tfs_readdir()
+   and the output should be different. Timestamps feature is tested in several 
+   different ways. First, creation time should never be changed after the file is
+   created. Secondly, modification time only change when there is write option
+   happens to the file. Last but not least, access time should change everytime
+   when the file is access, for either read/ write operation. Read-only and
+   write Byte are tested at the very end using "test3" and "test1" respectively. 
+
+4. Any limitations or bugs your file system has.
+   We managed to solve most of the bugs that we can think of during testing phase.
+   In the current version of our File System, it works as a fairly well. No-known
+   bugs have not been addressed or fixed. 

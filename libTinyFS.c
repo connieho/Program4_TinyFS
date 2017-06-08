@@ -8,47 +8,58 @@
 #include "tinyFS.h"
 #include "tinyFS_errno.h"
 
-//TODO WRITEFILE SIZE ERRORS - MKFS IF DISK ALREADY MOUNTED, MOUNT IF DISK ALREADY MOUNTED, UNMOUNT IF NO DISK
+//TODO
 //CURRENTLY MOUNTED, WRITE IF NOT ENOUGH FREE BLOCKS TO WRITE, OPENFILE IF NOT ENOUGH FREEBLOCKS,
 //all functions if disk is not mounted
 /* Makes a blank TinyFS file system of size nBytes on the file specified by ‘filename’. This function should use the emulated disk library to open the specified file, and upon success, format the file to be mountable. This includes initializing all data to 0x00, setting magic numbers, initializing and writing the superblock and inodes, etc. Must return a specified success/error code. */
 int tfs_mkfs(char *filename, int nBytes){
+   // Get the disk number where filename is reside in
    disk_num = openDisk(filename, nBytes);
+
+   if(mounted)
+      return ERROR_ALREADY_MOUNTED;
+
    //check to see if opendisk was a success, error code for failure
    if (disk_num < 0) {
       return ERROR_OPENDISK;
    }
 
+   // Initialize superBlock
    char *superblock = initSuperBlock(nBytes);
-   writeBlock(disk_num, 0, superblock); //writes the superblock to the file
+   // Write SB to the file
+   writeBlock(disk_num, 0, superblock);
    free(superblock);
    
+   // Initialize File System
    initFS(nBytes);
    disk_num = -1;
-   return 0;
+
+   return MAKEFS_SUCCESS;
 }
 
 
 /*Initializes all blocks in FS except for Superblock*/
 void initFS(int nBytes) {
-   int num_blocks;
-   char* newblock;
+   int num_blocks, idx;
+   char* newblock = (char *)calloc(1, BLOCKSIZE);
 
-
+   // Find number of blocks needed
    num_blocks = nBytes/BLOCKSIZE;
-   newblock = (char *)calloc(1, BLOCKSIZE);
-   for (int idx = 1; idx < num_blocks; idx++) {
+
+   // Initialize the block as a free block linked list and update if needed
+   for (idx = 1; idx < num_blocks; idx++) {
       *newblock = FREEBLOCK;
       *(newblock + 1) = 0x45;
 
-      if (idx + 1 < num_blocks) {
+      if ((idx + 1) < num_blocks) {
          *(newblock + 2) = idx + 1; //make this the pointer to the next block
       }
       else {
          *(newblock + 2) = 0; //last block points to 0x00
       }
 
-      //byte 3 remains empty
+      // byte 3 remains empty
+      // Write the newBlock onto disk
       writeBlock(disk_num, idx, newblock);
    }
 
@@ -58,10 +69,9 @@ void initFS(int nBytes) {
 
 /*Initializes the Superblock for the file system*/
 char* initSuperBlock(int nBytes) {
-   char* superblock;
+   char* superblock = (char *)calloc(1, BLOCKSIZE); 
    int num_blocks = nBytes/BLOCKSIZE;
 
-   superblock = (char *)calloc(1, BLOCKSIZE); 
    *superblock = SUPERBLOCK; //Byte 0 is block type, using superblock macro
    *(superblock + 1) = 0x45; //Byte 1 is magic byte for status check
    *(superblock + 2) = 1; //Byte 2: next free block, can change
@@ -76,12 +86,17 @@ char* initSuperBlock(int nBytes) {
 
 /* tfs_mount(char *filename) “mounts” a TinyFS file system located within ‘filename’. tfs_unmount(void) “unmounts” the currently mounted file system. As part of the mount operation, tfs_mount should verify the file system is the correct type. Only one file system may be mounted at a time. Use tfs_unmount to cleanly unmount the currently mounted file system. Must return a specified success/error code. */
 int tfs_mount(char *filename){
-   //open the disk
    char sb_buffer[BLOCKSIZE];
    char inode_buffer[BLOCKSIZE];
    char free_buffer[BLOCKSIZE];
+   int idx = 0;
    nextFD = 0;
 
+
+   if(mounted)
+      return ERROR_ALREADY_MOUNTED;
+
+   //open the disk, return BAD_MOUNT if error occurs
    disk_num = openDisk(filename, 0); 
    if (disk_num < 0) {
       return BAD_MOUNT;
@@ -91,15 +106,17 @@ int tfs_mount(char *filename){
    readBlock(disk_num, 0, sb_buffer);
    total_files =  sb_buffer[6];
    free_blocks = sb_buffer[5];
+
    file_table = (file_entry *)calloc(sizeof(file_entry), total_files);
    //start reading in inodes at byte offset 8
    //each byte holds block number for inode
-   for (int idx = 0; idx < total_files; idx++) {
+   for (idx = 0; idx < total_files; idx++) {
       readBlock(disk_num, sb_buffer[idx + 8], inode_buffer);
       file_table[idx].fd = 0;
       file_table[idx].open = 0;
       file_table[idx].inode_block = sb_buffer[idx + 8];
-      file_table[idx].file_block = inode_buffer[2]; //store the first file block number in byte 2
+      // Store the first file block number in byte2
+      file_table[idx].file_block = inode_buffer[2];
       memcpy(file_table[idx].name, inode_buffer + 5, 9); 
       file_table[idx].file_offset = 0;
    }
@@ -115,7 +132,8 @@ int tfs_mount(char *filename){
       last = current;
    }
 
-   for (int idx = 1; idx < free_blocks; idx++) {
+   // update the last freeblock to indicate it is the end.
+   for (idx = 1; idx < free_blocks; idx++) {
       readBlock(disk_num, last->block_number, free_buffer);
       current = (free_block*)calloc(sizeof(free_block), 1);
       current->block_number = free_buffer[2];
@@ -124,18 +142,31 @@ int tfs_mount(char *filename){
       last = current;
    }
 
-   return 0;
+   mounted = 1;
+
+   return MOUNT_SUCCESS;
 }
 
+// Cleanly unmount the current mounted file system 
 int tfs_unmount() {
    char sb_buffer[BLOCKSIZE];
+
+   if(disk_num < 0)
+      return ERROR_UNMOUNT_FAIL;
+
+   // Free the file_table
    free(file_table);
+
+   // Read in the disk block to sb_buffer
    readBlock(disk_num, 0, sb_buffer);
+   // Update all the fields to original starting point
    sb_buffer[5] = free_blocks;
    sb_buffer[6] = total_files;
    sb_buffer[2] = freeblock_head->block_number;
+   // Write back the buffer to disk (reinitialize)
    writeBlock(disk_num, 0, sb_buffer);
 
+   // Create an empty linked list
    free_block* temp;
    free_block* curr;
    curr = freeblock_head;
@@ -150,7 +181,8 @@ int tfs_unmount() {
    closeDisk(disk_num);
    disk_num = -1;
    mounted = 0;
-   return 0;
+
+   return UNMOUNT_SUCCESS;
 }
  
 /* Opens a file for reading and writing on the currently mounted file system. Creates a dynamic resource table entry for the file, and returns a file descriptor (integer) that can be used to reference this file while the filesystem is mounted. */
@@ -241,7 +273,7 @@ int tfs_closeFile(fileDescriptor FD) {
 /* Writes buffer ‘buffer’ of size ‘size’, which represents an entire file’s content, to the file system. Sets the file pointer to 0 (the start of file) when done. Returns success/error codes. */
 int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    // Error checking: RW access, disk open, have enough freeBlock
-   char *freeBuffer;
+   char *freeBuffer = (char *) calloc(1, BLOCKSIZE);
    int current_block_num, tempSize, numBlock, file_ext_num, inode, idx = 0;
    int i, next_block_num;
    free_block *newFile;
@@ -257,7 +289,9 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
       }
    }
    
-   freeBuffer = (char *) calloc(1, BLOCKSIZE);
+   if(!file_table[idx].open) {
+      return FILE_NOT_OPEN;
+   }
    // Find the inode block corresponding to the inode number
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
 
@@ -305,24 +339,31 @@ int tfs_writeFile(fileDescriptor FD, char *buffer, int size){
    
    return WRITE_SUCCESS;
 } 
+
 /* deletes a file and marks its blocks as free on disk. */
 int tfs_deleteFile(fileDescriptor FD){
    int idx, last_head, current_block;
    char readBuffer[BLOCKSIZE];
-   char *freeBuffer;
+   char *freeBuffer = (char *)calloc(1, BLOCKSIZE);
    free_block* freeEntry;
-   freeBuffer = (char *)calloc(1, BLOCKSIZE);
+
    freeBuffer[0] = FREEBLOCK;
    freeBuffer[1] = 0x45;
    idx = 0; 
    while (idx < total_files && file_table[idx].fd != FD) {
       ++idx;
+      if (idx >= total_files) {
+         return ERROR_BADFILE;
+      }
    }
-   if (idx >= total_files) {
-      return ERROR_BADFILE;
+
+   // Check if the file open for operation
+   if(!file_table[idx].open) {
+      return FILE_NOT_OPEN;
    }
    
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
+   // Check the RW access for the file, return if READ_ONLY
    if (readBuffer[RW] != 0x03) {
       return NO_WRITE_ACCESS;
    }
@@ -369,7 +410,7 @@ int tfs_deleteFile(fileDescriptor FD){
    file_table = realloc(file_table, sizeof(file_entry) * total_files);
 
    //remove file from table
-   return 0;
+   return DELETE_SUCCESS;
 }
  
 /* reads one byte from the file and copies it to buffer, using the current file pointer location and incrementing it by one upon success. If the file pointer is already at the end of the file then tfs_readByte() should return an error and not increment the file pointer. */
@@ -377,12 +418,15 @@ int tfs_readByte(fileDescriptor FD, char *buffer) {
    int idx, filesize, success, blockNum;
    char readBuffer[BLOCKSIZE];
    idx = 0;
-   while (idx < total_files && file_table[idx].fd != FD) {
+   while (file_table[idx].fd != FD) {
       ++idx;
+      if (idx >= total_files)
+         return ERROR_BADFILE;
    }
-   if (idx >= total_files || file_table[idx].open == 0) {
-      return ERROR_BADFILE;
+   if (file_table[idx].open == 0) {
+      return FILE_NOT_OPEN;
    }
+
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
    filesize = readBuffer[3] * 252;
    if (file_table[idx].file_offset <= filesize) {
@@ -404,9 +448,14 @@ int tfs_writeByte(fileDescriptor FD, unsigned char data) {
    int idx, filesize, success, blockNum, current_block;
    char readBuffer[BLOCKSIZE];
    idx = 0;
-   while (idx < total_files && file_table[idx].fd != FD) {
-      ++idx;
+   while (file_table[idx].fd != FD) {
+      idx++;
+      if(idx >= total_files)
+         return ERROR_BADFILE;
    }
+   if(!file_table[idx].open) {
+      return FILE_NOT_OPEN;
+   }   
    readBlock(disk_num, file_table[idx].inode_block, readBuffer);
    if (readBuffer[RW] != 0x03) {
       return NO_WRITE_ACCESS;
@@ -429,60 +478,86 @@ int tfs_writeByte(fileDescriptor FD, unsigned char data) {
    return success;
 }
 
+// Rename the old file name to newName
 int tfs_rename(char *newName, char *oldName) {
    int idx = 0;
    char buffer[BLOCKSIZE];
 
+   // Check if newName is greater than 8 (support size)
    if (strlen(newName) > 8)
       return ERROR_RENAME_FAILURE;
 
+   // Check if the oldName is root directory or not. If so, cannot change
    if (strcmp("/", oldName) == 0)
       return ERROR_RENAME_FAILURE;
 
    if (disk_num < 0)
       return ERROR_BADREAD; 
 
+   // Since we change the filename, modification and access time will be
+   // updated 
    modifyFile(file_table[idx].inode_block);
+   // Find the file in the system with oldName
    while (strcmp(file_table[idx].name, oldName) != 0) {
       idx++;
-      if(idx > total_files)
+      if(idx >= total_files)
          return ERROR_BADFILE;
    }
+   // Return FILE_NOT_OPEN if file is not open for write
+   if(!file_table[idx].open) {
+      return FILE_NOT_OPEN;
+   }   
 
+   // Change the oldname in file_table to newName
    strcpy(file_table[idx].name, newName);
+   // Read the inodeBlock to buffer
    readBlock(disk_num, file_table[idx].inode_block, buffer);
-   
+   // If READ Only, returns NO_WRITE_ACCESS
+   // FileName will not modify
+   if (buffer[RW] != 0x03) {
+      free(buffer);
+      return NO_WRITE_ACCESS;
+   }
+ 
+   // Push the changes in buffer back to inode block.  
    memcpy(buffer + 5, newName, strlen(newName) + 1);
    writeBlock(disk_num, file_table[idx].inode_block, buffer);
      
    return RENAME_SUCCESS;
 }
 
+// Print out a list of directories and files of the file system
 int tfs_readdir() {
    int idx = 0;
+
    printf("********** List of Files and Directories **********\n");
+   // Loop through the file_table and print all the files/ directories' names
    while (idx < total_files) {
       printf("%s\n", file_table[idx++].name);
    }
    
    printf("**********            Done               **********\n");
+   // Return success when finished
    return READDIR_SUCCESS;
 }
  
 /* change the file pointer location to offset (absolute). Returns success/error codes.*/
 int tfs_seek(fileDescriptor FD, int offset) {
    int file_size, code, currentBlock, idx = 0; 
+   char *freeBuffer = (char *)calloc(1, BLOCKSIZE);
 
    //inode byte 3 will be file pointer
    while(file_table[idx].fd != FD) {
       idx++;
-      if (idx > total_files) {
+      if (idx >= total_files) {
          return ERROR_BADFILE;        
       }
    }
-   char *freeBuffer = (char *)calloc(1, BLOCKSIZE);
    
    readBlock(disk_num, file_table[idx].inode_block, freeBuffer);
+   // Check if offset is greater than the size * 252 byte
+   // If so, return BADFILE, since offset cannot be greater than the file size
+   // else set file_offset to the offset that was passed in
    if (offset < freeBuffer[3] * 252) {
       code = 0;
       file_table[idx].file_offset = offset;
@@ -493,41 +568,63 @@ int tfs_seek(fileDescriptor FD, int offset) {
    }
    free(freeBuffer);
 
-   return SEEK_SUCCESS;
+   // return 0 if success, BADFILE if error occurs.
+   return code;
 }
 
+// Change the file READRITE ACCESS to Read Only
 int tfs_makeRO(char *name) {
-   int existing;
-   existing = 0;
-   char* buffer;
-   buffer = (char *) calloc(1, BLOCKSIZE);
-   for (int idx = 0; idx < total_files; idx++) {
-      if (strcmp(file_table[idx].name, name) == 0) {
-         existing = 1;
-         readBlock(disk_num, file_table[idx].inode_block, buffer);
-         buffer[14] = 0x01;
-         writeBlock(disk_num, file_table[idx].inode_block, buffer);
+   int idx, existing = 0;
+   char* buffer = (char *) calloc(1, BLOCKSIZE);
+
+   // Loop through the file system to find the file with corresponding name
+   for (idx = 0; idx < total_files; idx++) {
+      if(idx < total_files) {
+         if (strcmp(file_table[idx].name, name) == 0) {
+            existing = 1;
+            // Read inode block into buffer
+            readBlock(disk_num, file_table[idx].inode_block, buffer);
+            // Change the READWRITE Byte to READ only
+            buffer[14] = 0x01;
+            //Write buffer back to the inode block
+            writeBlock(disk_num, file_table[idx].inode_block, buffer);
+         }
+      } else {
+         return ERROR_BADFILE;
       }
    }
+   // Return BADFILE if file never exist
    if (existing == 0) {
       return ERROR_BADFILE;
    }
    return 0;
 }
 
+// Change the file READWRITE Access to Read and Write
 int tfs_makeRW(char *name) {
-   int existing;
-   existing = 0;
-   char* buffer;
-   buffer = (char *) calloc(1, BLOCKSIZE);
+   int existing = 0;
+   char* buffer = (char *) calloc(1, BLOCKSIZE);
+
+   // Loop through all the file in the system to find matching file name
+   // return BADFILE if file never found
    for (int idx = 0; idx < total_files; idx++) {
-      if (strcmp(file_table[idx].name, name) == 0) {
-         existing = 1;
-         readBlock(disk_num, file_table[idx].inode_block, buffer);
-         buffer[14] = 0x03;
-         writeBlock(disk_num, file_table[idx].inode_block, buffer);
+      if(idx < total_files) {
+         if (strcmp(file_table[idx].name, name) == 0) {
+            existing = 1;
+            
+            // Read the inode block to buffer
+            readBlock(disk_num, file_table[idx].inode_block, buffer);
+            // Change the Readwrite byte to RW
+            buffer[14] = 0x03;
+            // Write the buffer back to inode Block
+            writeBlock(disk_num, file_table[idx].inode_block, buffer);
+         }
+      } else {
+         return ERROR_BADFILE;
       }
    }
+
+   // if file never exist, return BADFILE
    if (existing == 0) {
       return ERROR_BADFILE;
    }
@@ -535,48 +632,72 @@ int tfs_makeRW(char *name) {
 
 }
 
+//tfs_readFileInfo returns a timestamp struct with  creation time or all info 
 timestamp* tfs_readFileInfo(fileDescriptor FD) {
+   //Initialization
    int idx = 0; 
-
-   while(file_table[idx].fd != FD) {
-      idx++;
-      if (idx > total_files) {
-         return NULL;        
-      }
-   }
    char *buffer = (char *)calloc(1, BLOCKSIZE);
    timestamp* time = (timestamp *) calloc(1, sizeof(timestamp));
+
+   // Find the corresponding file with FD, return BADFILE if not found
+   while(file_table[idx].fd != FD) {
+      idx++;
+      if(idx >= total_files)
+         break;
+   }
+
+   // Get the inode block and put in buffer
    readBlock(disk_num, file_table[idx].inode_block, buffer);
+
+   // Get the all the timestamp(create, access, modification)
    memcpy(time, buffer + 15, sizeof(timestamp));
    free(buffer);
+
    return time;
 }
 
 void accessFile(int inode) {
-   char* buffer;
-   timestamp* filetime;
-   buffer = (char *)calloc(BLOCKSIZE, 1);
+   // Initialization
+   char* buffer = (char *)calloc(BLOCKSIZE, 1);
+   timestamp* filetime = (timestamp *)calloc(sizeof(timestamp), 1);
+
+   // Read the inode block that specify in the parameter to buffer
    readBlock(disk_num, inode, buffer);
-   filetime = (timestamp *)calloc(sizeof(timestamp), 1);
+
+   // copy the file times to filetime struct
    memcpy(filetime, buffer + 15, sizeof(timestamp));
+
+   // Update file access time;
    filetime->access = time(NULL);
+   
+   // Write back the update structure to buffer and write to inodeBlock
    memcpy(buffer + 15, filetime, sizeof(timestamp));
    writeBlock(disk_num, inode, buffer);
+
+   // clean up
    free(buffer);
    free(filetime);
 }
 
 void modifyFile(int inode) {
-   char* buffer;
-   timestamp* filetime;
-   buffer = (char *)calloc(BLOCKSIZE, 1);
+   char* buffer = (char *)calloc(BLOCKSIZE, 1);
+   timestamp* filetime = (timestamp *)calloc(sizeof(timestamp), 1);
+
+   // find the inode block using the inode number pass in and write to buffer
    readBlock(disk_num, inode, buffer);
-   filetime = (timestamp *)calloc(sizeof(timestamp), 1);
+
+   // Get current times from buffer to filetime struct
    memcpy(filetime, buffer + 15, sizeof(timestamp));
+
+   // Update modification and access time
    filetime->modification = time(NULL);
    filetime->access = filetime->modification;
+
+   // Copy back to buffer and write back to inode block
    memcpy(buffer + 15, filetime, sizeof(timestamp));
    writeBlock(disk_num, inode, buffer);
+
+   // clean up
    free(buffer);
    free(filetime);
 }

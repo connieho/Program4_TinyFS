@@ -113,7 +113,7 @@ int main() {
    printf("Trying to read from test1, closed file\n");
    printf("Demo asserts that return result is an error, if not then prints the byte\n");
    int result = tfs_readByte(test1, &temp);
-   if (result == ERROR_BADFILE) {
+   if (result < 0) {
       printf("File not available\n");
    }
    else {
@@ -126,13 +126,20 @@ int main() {
    tfs_unmount();
    printf("\n");
 
-   printf("Mounting and Unmounting file second.txt\n");
+   printf("Test: Mounting and Unmounting file second.txt\n");
    tfs_mkfs("second.txt", 1024);
-   tfs_mount("second.txt");
+   if( tfs_mount("second.txt") < 0)
+      printf("Mount Error: %s\n", "second.txt");
+   printf("Test: Mounting more than 1 file system\n");
+   if(tfs_mount("test.txt") < 0)
+      printf("Mount Error: %s\n", "test.txt");
+   printf("Test: Make another file system while second.txt is mounted\n");
+   if(tfs_mkfs("third.txt", 12800) < 0)
+      printf("Cannot make a new file system, another FS is still mounted\n");
    tfs_unmount();
    printf("\n");
 
-   printf("Mounting filesystem test.txt\n");
+   printf("Test: Mounting filesystem test.txt\n");
    tfs_mount("test.txt");
    printf("\n");
    
