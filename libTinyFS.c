@@ -153,6 +153,8 @@ int tfs_unmount() {
 
    if(disk_num < 0)
       return ERROR_UNMOUNT_FAIL;
+   if(mounted == 0)
+      return ERROR_NOTHING_MOUNTED;
 
    // Free the file_table
    free(file_table);
